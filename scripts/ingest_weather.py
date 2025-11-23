@@ -25,7 +25,7 @@ def fetch_weather_data(lat, lon):
         "hourly": "temperature_2m,relativehumidity_2m,windspeed_10m"
     }
     try:
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -72,9 +72,10 @@ def ingest_data():
                 cw['windspeed'],
                 base_pollution
             ))
+            conn.commit() # Commit immediately
             print(f"Ingested weather data for {city_name}")
             
-    conn.commit()
+    # conn.commit() # Already committed
     cursor.close()
     conn.close()
     print("Weather ingestion complete.")
