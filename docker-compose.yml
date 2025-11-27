@@ -16,17 +16,33 @@ services:
     networks:
       - monitoring_net
 
-  grafana:
-    image: grafana/grafana:latest
-    container_name: air_quality_dashboard
+  weather_scraper:
+    build:
+      context: .
+      dockerfile: docker/weather_scraper/Dockerfile
+    container_name: weather_scraper
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      DB_HOST: postgres
+      DB_NAME: air_quality_monitoring
+      DB_USER: admin
+      DB_PASSWORD: adminpassword
+    depends_on:
+      - postgres
+    networks:
+      - monitoring_net
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: docker/streamlit/Dockerfile
+    container_name: streamlit_dashboard
+    environment:
+      DB_HOST: postgres
+      DB_NAME: air_quality_monitoring
+      DB_USER: admin
+      DB_PASSWORD: adminpassword
     ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
+      - "8501:8501"
     depends_on:
       - postgres
     networks:
@@ -38,4 +54,3 @@ networks:
 
 volumes:
   postgres_data:
-  grafana_data:
