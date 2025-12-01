@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS weather_log (
     temperature_c DECIMAL(5,2),
     humidity_percent DECIMAL(5,2),
     wind_speed_kmh DECIMAL(5,2),
+    weather_condition VARCHAR(50),
+    wind_direction DECIMAL(5,2),
+    uv_index DECIMAL(4,2),
     pollution_index INTEGER, 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

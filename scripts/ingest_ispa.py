@@ -28,7 +28,7 @@ def parse_number(value_str):
     return float(clean_str)
 
 def ingest_csv():
-    file_path = 'data/jumlah-kasus-pneumonia-dan-ispa-pada-balita-menurut-kabupaten-kota-tahun-2023.csv'
+    file_path = '../data/jumlah-kasus-pneumonia-dan-ispa-pada-balita-menurut-kabupaten-kota-tahun-2023.csv'
     if not os.path.exists(file_path):
         print(f"{file_path} not found.")
         return

@@ -2,16 +2,18 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:15
+    image: bitnami/postgresql
     container_name: air_quality_db
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: adminpassword
-      POSTGRES_DB: air_quality_monitoring
+      TZ: Asia/Jakarta
+      POSTGRESQL_TIMEZONE: Asia/Jakarta
+      POSTGRESQL_USERNAME: admin
+      POSTGRESQL_PASSWORD: adminpassword
+      POSTGRESQL_DATABASE: air_quality_monitoring
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pg_data:/bitnami/postgresql
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - monitoring_net
@@ -22,6 +24,7 @@ services:
       dockerfile: docker/weather_scraper/Dockerfile
     container_name: weather_scraper
     environment:
+      TZ: Asia/Jakarta
       DB_HOST: postgres
       DB_NAME: air_quality_monitoring
       DB_USER: admin
@@ -37,6 +40,7 @@ services:
       dockerfile: docker/streamlit/Dockerfile
     container_name: streamlit_dashboard
     environment:
+      TZ: Asia/Jakarta
       DB_HOST: postgres
       DB_NAME: air_quality_monitoring
       DB_USER: admin
@@ -53,4 +57,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
+  pg_data:

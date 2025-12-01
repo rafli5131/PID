@@ -5,7 +5,7 @@ import time
 
 # Database connection parameters
 DB_PARAMS = {
-    "host": "localhost",
+    "host": "postgres",
     "database": "air_quality_monitoring",
     "user": "admin",
     "password": "adminpassword",
@@ -17,12 +17,13 @@ def get_db_connection():
     return conn
 
 def fetch_weather_data(lat, lon):
-    url = "https://api.open-meteo.com/v1/forecast"
+    api_key = "5cd2d782c008f3b7edd5ceef7d2ed1e9"
+    url = "https://api.openweathermap.org/data/2.5/weather"
     params = {
-        "latitude": lat,
-        "longitude": lon,
-        "current_weather": "true",
-        "hourly": "temperature_2m,relativehumidity_2m,windspeed_10m"
+        "lat": lat,
+        "lon": lon,
+        "appid": api_key,
+        "units": "metric"
     }
     try:
         response = requests.get(url, params=params, timeout=10)
@@ -46,30 +47,46 @@ def ingest_data():
         city_id, city_name, lat, lon = city
         
         # Add delay to be nice to the API
-        time.sleep(0.5)
+        time.sleep(0.2)
         
         data = fetch_weather_data(lat, lon)
-        if data and 'current_weather' in data:
-            cw = data['current_weather']
+        if data and 'main' in data:
+            # Extract data
+            temp = data['main']['temp']
+            humidity = data['main']['humidity']
+            wind_speed = data['wind']['speed'] * 3.6 # Convert m/s to km/h
+            wind_deg = data['wind'].get('deg', 0)
+            weather_condition = data['weather'][0]['main'] if data['weather'] else 'Unknown'
             
-            # Simulate pollution index (0-300)
+            # Simulate pollution index (0-300) based on real weather data
             import random
             base_pollution = random.randint(50, 150)
-            if cw['windspeed'] < 5:
+            if wind_speed < 5:
                 base_pollution += 50
+            if 'Rain' in weather_condition:
+                base_pollution -= 30
             
+            # UV Index is not available in standard current weather API, simulating for now as requested
+            # In a real scenario, we would use the One Call API 3.0
+            uv_index = random.uniform(0, 11) 
+            if 10 <= datetime.now().hour <= 14:
+                 uv_index += 2
+
             sql = """
                 INSERT INTO weather_log 
-                (city_id, timestamp, temperature_c, humidity_percent, wind_speed_kmh, pollution_index)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (city_id, timestamp, temperature_c, humidity_percent, wind_speed_kmh, weather_condition, wind_direction, uv_index, pollution_index)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             cursor.execute(sql, (
                 city_id, 
-                cw['time'], 
-                cw['temperature'], 
-                random.randint(40, 90), # Humidity placeholder
-                cw['windspeed'],
+                datetime.fromtimestamp(data['dt']), 
+                temp, 
+                humidity,
+                wind_speed,
+                weather_condition,
+                wind_deg,
+                uv_index,
                 base_pollution
             ))
             conn.commit() # Commit immediately

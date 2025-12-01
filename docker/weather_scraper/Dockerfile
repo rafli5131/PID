@@ -9,9 +9,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-COPY dashboard/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install schedule requests
+RUN pip install schedule requests psycopg2-binary datetime
 
 # Copy scripts
 COPY scripts/ /app/scripts/
