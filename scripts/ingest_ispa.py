@@ -4,7 +4,7 @@ import os
 
 # Database connection parameters
 DB_PARAMS = {
-    "host": "localhost",
+    "host": os.getenv("DB_HOST", "postgres"),
     "database": "air_quality_monitoring",
     "user": "admin",
     "password": "adminpassword",
@@ -28,7 +28,9 @@ def parse_number(value_str):
     return float(clean_str)
 
 def ingest_csv():
-    file_path = '../data/jumlah-kasus-pneumonia-dan-ispa-pada-balita-menurut-kabupaten-kota-tahun-2023.csv'
+    # Construct path relative to this script file
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_dir, '../data/jumlah-kasus-pneumonia-dan-ispa-pada-balita-menurut-kabupaten-kota-tahun-2023.csv')
     if not os.path.exists(file_path):
         print(f"{file_path} not found.")
         return

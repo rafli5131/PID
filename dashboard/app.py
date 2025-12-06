@@ -42,17 +42,28 @@ def get_db_connection():
         return None
 
 # --- DATA PROCESSING ---
-def get_aqi_color(aqi):
-    if aqi <= 50: return [0, 128, 0, 160] # Green
-    elif aqi <= 100: return [255, 255, 0, 160] # Yellow
-    elif aqi <= 150: return [255, 165, 0, 160] # Orange
-    else: return [255, 0, 0, 160] # Red
+def get_epa_color(index):
+    # US EPA Index: 1-6
+    colors = {
+        1: [0, 228, 0, 160],   # Green (Good)
+        2: [255, 255, 0, 160], # Yellow (Moderate)
+        3: [255, 126, 0, 160], # Orange (Unhealthy for Sensitive)
+        4: [255, 0, 0, 160],   # Red (Unhealthy)
+        5: [143, 63, 151, 160],# Purple (Very Unhealthy)
+        6: [126, 0, 35, 160]   # Maroon (Hazardous)
+    }
+    return colors.get(index, [128, 128, 128, 160]) # Default Grey
 
-def get_aqi_status(aqi):
-    if aqi <= 50: return "Sehat"
-    elif aqi <= 100: return "Sedang"
-    elif aqi <= 150: return "Tidak Sehat bagi Sensitif"
-    else: return "Berbahaya"
+def get_epa_status(index):
+    status = {
+        1: "Good",
+        2: "Moderate",
+        3: "Unhealthy for Sensitive Groups",
+        4: "Unhealthy",
+        5: "Very Unhealthy",
+        6: "Hazardous"
+    }
+    return status.get(index, "Unknown")
 
 def load_data():
     conn = get_db_connection()
@@ -66,10 +77,12 @@ def load_data():
     df_ispa = pd.read_sql(query_ispa, conn)
 
     # 2. Latest Weather (Snapshot)
+    # Fetching new columns
     query_latest = """
         SELECT DISTINCT ON (c.name) 
             c.name, w.timestamp, w.temperature_c, w.humidity_percent, 
-            w.pollution_index, w.weather_condition, w.uv_index
+            w.pm2_5, w.pm10, w.us_epa_index, w.co, w.no2, w.o3,
+            w.weather_condition, w.uv_index, w.wind_speed_kmh, w.wind_dir, w.pressure_mb
         FROM weather_log w JOIN cities c ON w.city_id = c.id
         ORDER BY c.name, w.timestamp DESC
     """
@@ -77,7 +90,7 @@ def load_data():
 
     # 3. Time Series (24h)
     query_history = """
-        SELECT c.name, w.timestamp, w.pollution_index
+        SELECT c.name, w.timestamp, w.pm2_5, w.us_epa_index
         FROM weather_log w JOIN cities c ON w.city_id = c.id
         WHERE w.timestamp >= NOW() - INTERVAL '24 HOURS'
         ORDER BY w.timestamp ASC
@@ -87,11 +100,19 @@ def load_data():
     # Merge for Map
     if not df_ispa.empty and not df_latest.empty:
         df_map = pd.merge(df_ispa, df_latest, on='name', how='left')
-        df_map['color'] = df_map['pollution_index'].apply(get_aqi_color)
-        df_map['aqi_status'] = df_map['pollution_index'].apply(get_aqi_status)
         
-        # Risk Status for Tooltip (Simple Logic for now)
-        df_map['risk_status'] = df_map.apply(lambda x: "High Risk Area" if x['pollution_index'] > 100 and x['ispa_cases'] > df_map['ispa_cases'].median() else "Low/Medium Risk", axis=1)
+        # Use US EPA Index for coloring if available, else fallback
+        df_map['us_epa_index'] = df_map['us_epa_index'].fillna(0).astype(int)
+        df_map['color'] = df_map['us_epa_index'].apply(get_epa_color)
+        df_map['aqi_status'] = df_map['us_epa_index'].apply(get_epa_status)
+        
+        # Risk Status Logic (Updated)
+        # High Risk if EPA Index > 2 (Unhealthy+) AND ISPA cases > median
+        median_ispa = df_map['ispa_cases'].median()
+        df_map['risk_status'] = df_map.apply(
+            lambda x: "High Risk Area" if x['us_epa_index'] > 2 and x['ispa_cases'] > median_ispa else "Low/Medium Risk", 
+            axis=1
+        )
         
         return df_map, df_history, df_latest
     
@@ -101,7 +122,7 @@ df_map, df_history, df_latest = load_data()
 
 # --- SIDEBAR ---
 st.sidebar.title("Configuration")
-st.sidebar.info("Dashboard updated with specific visual requirements.")
+st.sidebar.info("Dashboard updated with WeatherAPI data.")
 
 # City Filter
 if df_map is not None:
@@ -127,32 +148,36 @@ if df_map is not None:
     # KPI Cards
     col1, col2, col3, col4 = st.columns(4)
     
-    avg_aqi = df_latest['pollution_index'].mean()
+    avg_pm25 = df_latest['pm2_5'].mean()
     avg_temp = df_latest['temperature_c'].mean()
     avg_hum = df_latest['humidity_percent'].mean()
-    max_poll_city = df_latest.loc[df_latest['pollution_index'].idxmax()]
-    danger_count = df_latest[df_latest['pollution_index'] > 150].shape[0]
     
-    col1.metric("Rata-rata AQI", f"{avg_aqi:.0f}", delta="Unhealthy" if avg_aqi > 100 else "Healthy", delta_color="inverse")
+    # Find max pollution city based on PM2.5
+    max_poll_city = df_latest.loc[df_latest['pm2_5'].idxmax()]
+    
+    # Count cities with EPA Index > 2 (Unhealthy for sensitive groups or worse)
+    danger_count = df_latest[df_latest['us_epa_index'] > 2].shape[0]
+    
+    col1.metric("Rata-rata PM2.5", f"{avg_pm25:.1f} µg/m³", delta="High" if avg_pm25 > 15 else "Normal", delta_color="inverse")
     col2.metric("Suhu | Kelembaban", f"{avg_temp:.1f}°C | {avg_hum:.0f}%")
-    col3.metric("Polusi Tertinggi", f"{max_poll_city['name']}", f"{max_poll_city['pollution_index']:.0f}")
-    col4.metric("Peringatan Dini (Bahaya)", f"{danger_count} Kota", delta_color="inverse")
+    col3.metric("Polusi Tertinggi (PM2.5)", f"{max_poll_city['name']}", f"{max_poll_city['pm2_5']:.1f}")
+    col4.metric("Peringatan Dini (>Moderate)", f"{danger_count} Kota", delta_color="inverse")
     
     # Charts: Time Series & Weather Dist
     col_ts, col_gauge = st.columns([2, 1])
     
     with col_ts:
-        st.subheader("Tren Kualitas Udara 24 Jam Terakhir")
-        # Filter for major cities or top 5 most polluted to avoid clutter
-        top_cities = df_latest.sort_values('pollution_index', ascending=False).head(5)['name'].tolist()
+        st.subheader("Tren PM2.5 (24 Jam Terakhir)")
+        # Filter for top 5 most polluted
+        top_cities = df_latest.sort_values('pm2_5', ascending=False).head(5)['name'].tolist()
         df_history_filtered = df_history[df_history['name'].isin(top_cities)]
         
-        fig_ts = px.line(df_history_filtered, x='timestamp', y='pollution_index', color='name', 
-                         title="Tren Polusi (Top 5 Kota Tertinggi)", markers=True)
+        fig_ts = px.line(df_history_filtered, x='timestamp', y='pm2_5', color='name', 
+                         title="Tren PM2.5 (Top 5 Kota Tertinggi)", markers=True)
         st.plotly_chart(fig_ts, use_container_width=True)
         
     with col_gauge:
-        st.subheader("Distribusi Cuaca Saat Ini")
+        st.subheader("Distribusi Kondisi Cuaca")
         weather_counts = df_latest['weather_condition'].value_counts().reset_index()
         weather_counts.columns = ['Condition', 'Count']
         fig_pie = px.pie(weather_counts, values='Count', names='Condition', hole=0.4)
@@ -169,13 +194,13 @@ if df_map is not None:
         opacity=0.8,
         stroked=True,
         filled=True,
-        radius_scale=100, # Adjust scale for visibility
+        radius_scale=100,
         radius_min_pixels=5,
         radius_max_pixels=50,
         line_width_min_pixels=1,
         get_position=["longitude", "latitude"],
         get_radius="ispa_cases", # Size based on ISPA
-        get_fill_color="color",  # Color based on AQI
+        get_fill_color="color",  # Color based on EPA Index
         get_line_color=[0, 0, 0],
     )
 
@@ -192,16 +217,18 @@ if df_map is not None:
         tooltip={
             "html": "<b>{name}</b><br/>"
                     "🌡️ Suhu: {temperature_c}°C<br/>"
-                    "😷 AQI Saat Ini: {pollution_index} ({aqi_status})<br/>"
-                    "🏥 Total Kasus ISPA (2023): {ispa_cases}<br/>"
+                    "💨 Angin: {wind_speed_kmh} km/h ({wind_dir})<br/>"
+                    "🌫️ PM2.5: {pm2_5} µg/m³<br/>"
+                    "📊 EPA Index: {us_epa_index} ({aqi_status})<br/>"
+                    "🏥 ISPA (2023): {ispa_cases}<br/>"
                     "⚠️ Status: {risk_status}",
             "style": {"backgroundColor": "white", "color": "black"}
         }
     ))
-    st.caption("Lingkaran Besar = ISPA Tinggi | Warna Merah = Polusi Tinggi")
+    st.caption("Lingkaran Besar = ISPA Tinggi | Warna = Indeks Kualitas Udara (EPA)")
 
     # --- PART 3: HEALTH RISK CORRELATION ---
-    st.header("3. Health Risk Correlation (Strategis/Analisis)")
+    st.header("3. Health Risk Correlation (Analisis ISPA vs Kualitas Udara)")
     
     col_bar, col_scatter = st.columns(2)
     
@@ -214,18 +241,22 @@ if df_map is not None:
         st.plotly_chart(fig_bar, use_container_width=True)
         
     with col_scatter:
-        st.subheader("Korelasi Polusi vs Kesehatan")
+        st.subheader("Korelasi PM2.5 vs Kasus ISPA")
         fig_scatter = px.scatter(
             df_map, 
-            x="pollution_index", 
+            x="pm2_5", 
             y="ispa_cases", 
             size="ispa_cases", 
             color="aqi_status",
             hover_name="name",
-            title="Pollution Index vs ISPA Cases",
-            labels={"pollution_index": "Rata-rata Pollution Index", "ispa_cases": "Total ISPA Cases"}
+            title="PM2.5 Levels vs ISPA Cases",
+            labels={"pm2_5": "PM2.5 (µg/m³)", "ispa_cases": "Total ISPA Cases"}
         )
         st.plotly_chart(fig_scatter, use_container_width=True)
+        
+    # Additional Air Quality Details Table
+    st.subheader("Detail Kualitas Udara Terkini")
+    st.dataframe(df_latest[['name', 'timestamp', 'pm2_5', 'pm10', 'co', 'no2', 'o3', 'us_epa_index', 'weather_condition']].sort_values('pm2_5', ascending=False))
 
 else:
     st.error("Data could not be loaded. Please ensure the database is running.")

@@ -24,6 +24,7 @@ services:
       dockerfile: docker/weather_scraper/Dockerfile
     container_name: weather_scraper
     environment:
+      PYTHONUNBUFFERED: 1
       TZ: Asia/Jakarta
       DB_HOST: postgres
       DB_NAME: air_quality_monitoring
@@ -31,8 +32,32 @@ services:
       DB_PASSWORD: adminpassword
     depends_on:
       - postgres
+    volumes:
+      - ./data:/app/data
     networks:
       - monitoring_net
+
+  ingest_ispa:
+    build:
+      context: .
+      dockerfile: docker/weather_scraper/Dockerfile
+    container_name: ingest_ispa
+    environment:
+      PYTHONUNBUFFERED: 1
+      TZ: Asia/Jakarta
+      DB_HOST: postgres
+      DB_NAME: air_quality_monitoring
+      DB_USER: admin
+      DB_PASSWORD: adminpassword
+    command: [ "python", "scripts/ingest_ispa.py" ]
+    depends_on:
+      - postgres
+    volumes:
+      - ./data:/app/data
+    networks:
+      - monitoring_net
+    profiles:
+      - tools
 
   streamlit:
     build:

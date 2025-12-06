@@ -13,14 +13,14 @@
 
 ### 1. Real-Time Environment Monitor (Operasional)
 Pantau kondisi lingkungan terkini di seluruh kota di Jawa Tengah.
-- **KPI Cards**: Menampilkan rata-rata AQI, suhu, kelembaban, dan kota dengan polusi tertinggi saat ini.
-- **Time Series Chart**: Grafik tren polusi udara dalam 24 jam terakhir.
+- **KPI Cards**: Menampilkan rata-rata PM2.5, suhu, kelembaban, dan kota dengan polusi tertinggi saat ini.
+- **Time Series Chart**: Grafik tren PM2.5 dalam 24 jam terakhir.
 - **Weather Distribution**: Visualisasi kondisi cuaca saat ini.
 
 ### 2. Geospatial Analysis (Peta Sebaran)
 Peta interaktif untuk melihat sebaran polusi dan risiko kesehatan.
 - **Bubble Map**:
-  - **Warna**: Indikator AQI Real-time (🟢 Sehat, 🟡 Sedang, 🟠 Tidak Sehat, 🔴 Berbahaya).
+  - **Warna**: Indikator Kualitas Udara (US EPA Index) (🟢 Good - 🔴 Hazardous).
   - **Ukuran**: Indikator jumlah kasus ISPA historis (Semakin besar = semakin banyak kasus).
 - **Tooltip Interaktif**: Arahkan kursor ke kota untuk melihat detail suhu, status AQI, dan total kasus ISPA.
 
@@ -42,7 +42,7 @@ Analisis mendalam mengenai hubungan antara kualitas udara dan kesehatan.
 - **Database**: PostgreSQL
 - **Visualisasi**: Plotly, PyDeck
 - **Containerization**: Docker & Docker Compose
-- **Data Source**: OpenWeatherMap (Cuaca/Polusi) & Data Dinas Kesehatan (ISPA)
+- **Data Source**: WeatherAPI.com (Cuaca & Kualitas Udara Lengkap) & Data Dinas Kesehatan (ISPA)
 
 ---
 

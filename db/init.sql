@@ -56,10 +56,27 @@ CREATE TABLE IF NOT EXISTS weather_log (
     temperature_c DECIMAL(5,2),
     humidity_percent DECIMAL(5,2),
     wind_speed_kmh DECIMAL(5,2),
-    weather_condition VARCHAR(50),
-    wind_direction DECIMAL(5,2),
+    weather_condition VARCHAR(100),
+    wind_direction VARCHAR(10), -- Changed to VARCHAR for "W", "NE" etc or keep decimal if degrees. API gives "W" (dir) and 259 (degree). Let's store degree as decimal or dir as string. The user's JSON shows "wind_dir": "W", "wind_degree": 259. Previous schema had wind_direction DECIMAL. Let's keep wind_direction as DECIMAL for degrees and add wind_cardinal for string if needed, or just use degrees. The previous code used `wind_deg`. Let's stick to degrees for `wind_direction` to minimize breaking changes, or update it. The JSON has `wind_degree`.
+    wind_degree INTEGER,
+    wind_dir VARCHAR(5),
+    pressure_mb DECIMAL(6,2),
+    precip_mm DECIMAL(6,2),
+    cloud INTEGER,
+    feelslike_c DECIMAL(5,2),
+    vis_km DECIMAL(5,2),
     uv_index DECIMAL(4,2),
-    pollution_index INTEGER, 
+    gust_kph DECIMAL(5,2),
+    -- Air Quality
+    co DECIMAL(10,2),
+    no2 DECIMAL(10,2),
+    o3 DECIMAL(10,2),
+    so2 DECIMAL(10,2),
+    pm2_5 DECIMAL(10,2),
+    pm10 DECIMAL(10,2),
+    us_epa_index INTEGER,
+    gb_defra_index INTEGER,
+    pollution_index INTEGER, -- Kept for backward compatibility, can be mapped to us_epa_index or pm2_5
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

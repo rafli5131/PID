@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-RUN pip install schedule requests psycopg2-binary datetime
+RUN pip install schedule requests psycopg2-binary datetime asyncio aiohttp
 
 # Copy scripts
 COPY scripts/ /app/scripts/

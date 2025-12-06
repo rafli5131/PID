@@ -1,7 +1,8 @@
-import requests
+import asyncio
+import aiohttp
 import psycopg2
 from datetime import datetime
-import time
+import os
 
 # Database connection parameters
 DB_PARAMS = {
@@ -12,90 +13,116 @@ DB_PARAMS = {
     "port": "5432"
 }
 
+API_KEY = "4c0dbb9c648a4e669a641524251809"
+BASE_URL = "http://api.weatherapi.com/v1/current.json"
+
 def get_db_connection():
     conn = psycopg2.connect(**DB_PARAMS)
     return conn
 
-def fetch_weather_data(lat, lon):
-    api_key = "5cd2d782c008f3b7edd5ceef7d2ed1e9"
-    url = "https://api.openweathermap.org/data/2.5/weather"
+async def fetch_weather(session, city_name):
     params = {
-        "lat": lat,
-        "lon": lon,
-        "appid": api_key,
-        "units": "metric"
+        "key": API_KEY,
+        "q": f"{city_name},Jawa Tengah, Indonesia",
+        "lang": "id",
+        "aqi": "yes"
     }
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        return response.json()
+        async with session.get(BASE_URL, params=params) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                print(f"Failed to fetch data for {city_name}: {response.status}")
+                return None
     except Exception as e:
-        print(f"Error fetching data: {e}")
+        print(f"Error fetching data for {city_name}: {e}")
         return None
 
-def ingest_data():
+async def ingest_data_async():
     conn = get_db_connection()
     cursor = conn.cursor()
     
     print(f"Starting ingestion at {datetime.now()}")
     
     # Fetch all cities from DB
-    cursor.execute("SELECT id, name, latitude, longitude FROM cities WHERE latitude IS NOT NULL")
+    cursor.execute("SELECT id, name FROM cities")
     cities = cursor.fetchall()
-
-    for city in cities:
-        city_id, city_name, lat, lon = city
+    
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for city in cities:
+            city_id, city_name = city
+            tasks.append(process_city(session, cursor, city_id, city_name))
         
-        # Add delay to be nice to the API
-        time.sleep(0.2)
-        
-        data = fetch_weather_data(lat, lon)
-        if data and 'main' in data:
-            # Extract data
-            temp = data['main']['temp']
-            humidity = data['main']['humidity']
-            wind_speed = data['wind']['speed'] * 3.6 # Convert m/s to km/h
-            wind_deg = data['wind'].get('deg', 0)
-            weather_condition = data['weather'][0]['main'] if data['weather'] else 'Unknown'
-            
-            # Simulate pollution index (0-300) based on real weather data
-            import random
-            base_pollution = random.randint(50, 150)
-            if wind_speed < 5:
-                base_pollution += 50
-            if 'Rain' in weather_condition:
-                base_pollution -= 30
-            
-            # UV Index is not available in standard current weather API, simulating for now as requested
-            # In a real scenario, we would use the One Call API 3.0
-            uv_index = random.uniform(0, 11) 
-            if 10 <= datetime.now().hour <= 14:
-                 uv_index += 2
-
-            sql = """
-                INSERT INTO weather_log 
-                (city_id, timestamp, temperature_c, humidity_percent, wind_speed_kmh, weather_condition, wind_direction, uv_index, pollution_index)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            
-            cursor.execute(sql, (
-                city_id, 
-                datetime.fromtimestamp(data['dt']), 
-                temp, 
-                humidity,
-                wind_speed,
-                weather_condition,
-                wind_deg,
-                uv_index,
-                base_pollution
-            ))
-            conn.commit() # Commit immediately
-            print(f"Ingested weather data for {city_name}")
-            
-    # conn.commit() # Already committed
+        await asyncio.gather(*tasks)
+    
+    conn.commit()
     cursor.close()
     conn.close()
     print("Weather ingestion complete.")
+
+async def process_city(session, cursor, city_id, city_name):
+    data = await fetch_weather(session, city_name)
+    if data:
+        try:
+            current = data['current']
+            location = data['location']
+            air_quality = current.get('air_quality', {})
+            
+            # Extract fields
+            temp_c = current['temp_c']
+            humidity = current['humidity']
+            wind_kph = current['wind_kph']
+            wind_degree = current['wind_degree']
+            wind_dir = current['wind_dir']
+            pressure_mb = current['pressure_mb']
+            precip_mm = current['precip_mm']
+            cloud = current['cloud']
+            feelslike_c = current['feelslike_c']
+            vis_km = current['vis_km']
+            uv_index = current['uv']
+            gust_kph = current['gust_kph']
+            condition_text = current['condition']['text']
+            
+            # Air Quality
+            co = air_quality.get('co', 0)
+            no2 = air_quality.get('no2', 0)
+            o3 = air_quality.get('o3', 0)
+            so2 = air_quality.get('so2', 0)
+            pm2_5 = air_quality.get('pm2_5', 0)
+            pm10 = air_quality.get('pm10', 0)
+            us_epa_index = air_quality.get('us-epa-index', 0)
+            gb_defra_index = air_quality.get('gb-defra-index', 0)
+            
+            # Use PM2.5 as the main pollution index for backward compatibility or display
+            pollution_index = int(pm2_5)
+
+            sql = """
+                INSERT INTO weather_log 
+                (city_id, timestamp, temperature_c, humidity_percent, wind_speed_kmh, 
+                weather_condition, wind_degree, wind_dir, pressure_mb, precip_mm, 
+                cloud, feelslike_c, vis_km, uv_index, gust_kph, 
+                co, no2, o3, so2, pm2_5, pm10, us_epa_index, gb_defra_index, pollution_index)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            # Timestamp from API is epoch, convert to datetime
+            timestamp = datetime.fromtimestamp(current['last_updated_epoch'])
+
+            cursor.execute(sql, (
+                city_id, timestamp, temp_c, humidity, wind_kph,
+                condition_text, wind_degree, wind_dir, pressure_mb, precip_mm,
+                cloud, feelslike_c, vis_km, uv_index, gust_kph,
+                co, no2, o3, so2, pm2_5, pm10, us_epa_index, gb_defra_index, pollution_index
+            ))
+            print(f"Ingested data for {city_name}")
+            
+        except Exception as e:
+            print(f"Error processing data for {city_name}: {e}")
+
+def ingest_data():
+    """Synchronous wrapper for the async ingestion function."""
+    asyncio.run(ingest_data_async())
 
 if __name__ == "__main__":
     ingest_data()
