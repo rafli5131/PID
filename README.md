@@ -52,8 +52,8 @@ Pastikan Anda telah menginstal **Docker** dan **Docker Compose** di komputer And
 
 1. **Clone Repository**
    ```bash
-   git clone <repository-url>
-   cd project-akhir
+   git clone https://github.com/rafli5131/PID.git
+   cd PID
    ```
 
 2. **Jalankan Aplikasi dengan Docker Compose**
@@ -113,3 +113,8 @@ Dashboard ini menggunakan pendekatan **Dynamic Risk Index** untuk mengkategorika
 
 ---
 *Dibuat untuk Tugas Akhir PID - 2025*
+
+
+## Deployment and data caveats
+
+This repository uses fixed **development-only** PostgreSQL credentials in `docker-compose.yml` and exposes a local database port. Replace these values and restrict access before using the stack outside an isolated development machine. API integrations and datasets can change; dashboard metrics depend on the quality and freshness of those sources. The visualizations illustrate exploratory relationships and do not establish medical causation or individual health risk.
